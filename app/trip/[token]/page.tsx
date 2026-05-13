@@ -20,7 +20,6 @@ export default function TripPage() {
   const [tab, setTab] = useState<'my' | 'overview'>('my')
   const [myMonth, setMyMonth] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() })
   const [ovMonth, setOvMonth] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() })
-  const [dragMode, setDragMode] = useState<AvailStatus | 'clear'>('avail')
   const [localAvail, setLocalAvail] = useState<AvailMap>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -30,7 +29,6 @@ export default function TripPage() {
   const [joiningAs, setJoiningAs] = useState(false)
   const [newRespInput, setNewRespInput] = useState('')
   const dragging = useRef(false)
-  const dragSet = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     if (!token) return
@@ -162,7 +160,6 @@ export default function TripPage() {
   }
 
   function cycleDay(iso: string) {
-    // Single tap cycles through avail -> maybe -> busy
     setLocalAvail(prev => {
       const next = { ...prev }
       const cur = next[iso] || 'busy'
@@ -173,32 +170,8 @@ export default function TripPage() {
     })
   }
 
-  function startDrag(iso: string) {
-    dragging.current = true
-    dragSet.current = new Set([iso])
-    applyDragToSet()
-  }
-
-  function continueDrag(iso: string) {
-    if (!dragging.current) return
-    dragSet.current.add(iso)
-    applyDragToSet()
-  }
-
-  function applyDragToSet() {
-    setLocalAvail(prev => {
-      const next = { ...prev }
-      dragSet.current.forEach(d => {
-        if (dragMode === 'clear') delete next[d]
-        else next[d] = dragMode as AvailStatus
-      })
-      return next
-    })
-  }
-
   function endDrag() {
     dragging.current = false
-    dragSet.current = new Set()
   }
 
   function shiftMonth(dir: number, which: 'my' | 'ov') {
@@ -310,12 +283,9 @@ export default function TripPage() {
                 month={myMonth}
                 trip={trip}
                 avail={localAvail}
-                dragMode={dragMode}
                 sportColor={sp.color}
                 onShift={dir => shiftMonth(dir, 'my')}
                 onCycleDay={cycleDay}
-                onDragStart={startDrag}
-                onDragContinue={continueDrag}
               />
               {/* Legend */}
               <div className="flex gap-4 mt-3">
@@ -354,30 +324,6 @@ export default function TripPage() {
                         {countInMonth(localAvail, myMonth, trip, 'maybe')}
                       </p>
                       <p className="text-xs text-gray-400">maybe</p>
-                    </div>
-                  </div>
-
-                  {/* Drag mode */}
-                  <div className="flex-1 md:flex-none">
-                    <p className="text-xs text-gray-400 mb-2">Tap or drag</p>
-                    <div className="flex md:flex-col gap-1.5 mb-4">
-                      {([
-                        { id: 'avail', label: 'Free', bg: sp.color, fg: sp.bg },
-                        { id: 'maybe', label: 'Maybe', bg: '#EF9F27', fg: '#412402' },
-                        { id: 'clear', label: 'Clear', bg: '#f3f4f6', fg: '#374151' },
-                      ] as const).map(mode => (
-                        <button
-                          key={mode.id}
-                          onClick={() => setDragMode(mode.id)}
-                          className="text-xs py-1.5 px-3 rounded-lg font-medium transition-all"
-                          style={dragMode === mode.id
-                            ? { background: mode.bg, color: mode.fg }
-                            : { background: '#f9fafb', color: '#6b7280' }
-                          }
-                        >
-                          {mode.label}
-                        </button>
-                      ))}
                     </div>
                   </div>
 
@@ -488,17 +434,14 @@ export default function TripPage() {
 // ── Calendar grid ─────────────────────────────────────────────────────────────
 
 function CalendarGrid({
-  month, trip, avail, dragMode, sportColor, onShift, onCycleDay, onDragStart, onDragContinue
+  month, trip, avail, sportColor, onShift, onCycleDay
 }: {
   month: { y: number; m: number }
   trip: Trip
   avail: AvailMap
-  dragMode: AvailStatus | 'clear'
   sportColor: string
   onShift: (dir: number) => void
   onCycleDay: (iso: string) => void
-  onDragStart: (iso: string) => void
-  onDragContinue: (iso: string) => void
 }) {
   const { y, m } = month
   const tripDays = new Set(getDays(trip.start_date, trip.end_date))
@@ -514,7 +457,7 @@ function CalendarGrid({
           <span className="text-sm font-medium text-gray-900 w-28 text-center">{MONTHS[m]} {y}</span>
           <button onClick={() => onShift(1)} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">›</button>
         </div>
-        <span className="text-xs text-gray-400">Tap or drag</span>
+        <span className="text-xs text-gray-400">Tap to cycle</span>
       </div>
       <div className="grid grid-cols-7 gap-1" style={{ maxWidth: 320 }}>
         {DOWS.map(d => <div key={d} className="text-center text-xs text-gray-400 pb-1">{d}</div>)}
@@ -548,8 +491,6 @@ function CalendarGrid({
                 opacity: inTrip ? 1 : 0.3,
               }}
               onClick={inTrip ? () => onCycleDay(iso) : undefined}
-              onMouseDown={inTrip ? e => { e.preventDefault(); onDragStart(iso) } : undefined}
-              onMouseOver={inTrip ? () => onDragContinue(iso) : undefined}
             >
               {d}
             </div>
