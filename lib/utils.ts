@@ -55,7 +55,13 @@ export const MONTHS = [
   'July','August','September','October','November','December'
 ]
 
-export const DOWS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+export const DOWS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+
+// Returns 0=Mon ... 6=Sun offset for calendar grid
+export function getMondayOffset(y: number, m: number): number {
+  const dow = new Date(y, m, 1).getDay() // 0=Sun
+  return dow === 0 ? 6 : dow - 1
+}
 
 export function getDays(start: string, end: string): string[] {
   const days: string[] = []

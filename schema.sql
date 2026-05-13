@@ -69,3 +69,17 @@ create policy "Public insert availability" on availability for insert with check
 create policy "Public update availability" on availability for update using (true);
 create policy "Public delete availability" on availability for delete using (true);
 
+
+-- SOFT DELETE SUPPORT (run this if you already set up the schema)
+alter table trips add column if not exists deleted_at timestamptz default null;
+create index if not exists idx_trips_deleted_at on trips(deleted_at);
+
+-- Update cleanup function to also purge soft-deleted trips after 7 days
+create or replace function delete_expired_trips()
+returns void as $$
+  delete from trips where expires_at < now();
+  delete from trips where deleted_at is not null and deleted_at < now() - interval '7 days';
+$$ language sql;
+
+-- Allow soft delete update
+create policy "Public soft delete trips" on trips for update using (true) with check (true);

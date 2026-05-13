@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { Trip, Respondent, Availability, AvailStatus } from '@/lib/supabase'
-import { getSport, getDays, fmtRange, fmtDay, collapseRanges, MONTHS, DOWS } from '@/lib/utils'
+import { getSport, getDays, fmtRange, fmtDay, collapseRanges, MONTHS, DOWS, getMondayOffset } from '@/lib/utils'
 
 type AvailMap = Record<string, AvailStatus>
 type AllAvail = Record<string, AvailMap>
@@ -287,18 +287,21 @@ export default function TripPage() {
                 onShift={dir => shiftMonth(dir, 'my')}
                 onCycleDay={cycleDay}
               />
-              {/* Legend */}
-              <div className="flex gap-4 mt-3">
-                {[
-                  { color: sp.color, label: 'Free' },
-                  { color: '#EF9F27', label: 'Maybe' },
-                  { color: '#f3f4f6', label: 'Busy', border: true },
-                ].map(l => (
-                  <div key={l.label} className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded" style={{ background: l.color, border: l.border ? '1px solid #e5e7eb' : undefined }} />
-                    <span className="text-xs text-gray-500">{l.label}</span>
-                  </div>
-                ))}
+              {/* Legend with tap hint */}
+              <div className="mt-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs text-gray-400">Tap to cycle:</span>
+                  {[
+                    { color: sp.color, label: 'Free' },
+                    { color: '#EF9F27', label: 'Maybe' },
+                    { color: '#f3f4f6', label: 'Busy', border: true },
+                  ].map(l => (
+                    <div key={l.label} className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded" style={{ background: l.color, border: l.border ? '1px solid #e5e7eb' : undefined }} />
+                      <span className="text-xs text-gray-500">{l.label}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -445,19 +448,16 @@ function CalendarGrid({
 }) {
   const { y, m } = month
   const tripDays = new Set(getDays(trip.start_date, trip.end_date))
-  const firstDow = new Date(y, m, 1).getDay()
+  const firstDow = getMondayOffset(y, m)
   const dim = new Date(y, m + 1, 0).getDate()
   const today = new Date().toISOString().slice(0, 10)
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <button onClick={() => onShift(-1)} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">‹</button>
-          <span className="text-sm font-medium text-gray-900 w-28 text-center">{MONTHS[m]} {y}</span>
-          <button onClick={() => onShift(1)} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">›</button>
-        </div>
-        <span className="text-xs text-gray-400">Tap to cycle</span>
+      <div className="flex items-center gap-2 mb-3">
+        <button onClick={() => onShift(-1)} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">‹</button>
+        <span className="text-sm font-medium text-gray-900 w-28 text-center">{MONTHS[m]} {y}</span>
+        <button onClick={() => onShift(1)} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">›</button>
       </div>
       <div className="grid grid-cols-7 gap-1" style={{ maxWidth: 320 }}>
         {DOWS.map(d => <div key={d} className="text-center text-xs text-gray-400 pb-1">{d}</div>)}
@@ -515,7 +515,7 @@ function HeatmapGrid({
 }) {
   const { y, m } = month
   const tripDays = new Set(getDays(trip.start_date, trip.end_date))
-  const firstDow = new Date(y, m, 1).getDay()
+  const firstDow = getMondayOffset(y, m)
   const dim = new Date(y, m + 1, 0).getDate()
   const today = new Date().toISOString().slice(0, 10)
   const total = respondents.length || 1
