@@ -1,12 +1,12 @@
 'use client'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { Trip, Respondent, Availability, AvailStatus } from '@/lib/supabase'
 import { getSport, getDays, fmtRange, fmtDay, collapseRanges, MONTHS, DOWS } from '@/lib/utils'
 
 type AvailMap = Record<string, AvailStatus>
-type AllAvail = Record<string, AvailMap> // respondent_id -> date -> status
+type AllAvail = Record<string, AvailMap>
 
 export default function TripPage() {
   const params = useParams()
@@ -24,6 +24,7 @@ export default function TripPage() {
   const [localAvail, setLocalAvail] = useState<AvailMap>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
   const [nameInput, setNameInput] = useState('')
   const [joiningAs, setJoiningAs] = useState(false)
@@ -31,7 +32,6 @@ export default function TripPage() {
   const dragging = useRef(false)
   const dragSet = useRef<Set<string>>(new Set())
 
-  // Load trip data
   useEffect(() => {
     if (!token) return
     loadTrip()
@@ -74,13 +74,11 @@ export default function TripPage() {
       setAllAvail(map)
     }
 
-    // Check if we know who we are
     const savedId = localStorage.getItem(`betaplan_resp_${token}`)
     const savedName = localStorage.getItem(`betaplan_resp_name_${token}`)
     if (savedId && savedName) {
       setMyRespondentId(savedId)
       setMyName(savedName)
-      // Load my local availability
       const myAv: AvailMap = {}
       if (availData) {
         ;(availData as Availability[])
@@ -98,7 +96,6 @@ export default function TripPage() {
     setJoiningAs(true)
     const name = nameInput.trim()
 
-    // Check if respondent already exists
     const existing = respondents.find(r => r.name.toLowerCase() === name.toLowerCase())
     if (existing) {
       setMyRespondentId(existing.id)
@@ -148,44 +145,52 @@ export default function TripPage() {
   async function saveAvailability() {
     if (!myRespondentId || !trip) return
     setSaving(true)
+    await supabase.from('availability').delete().eq('respondent_id', myRespondentId)
     const upserts = Object.entries(localAvail).map(([date, status]) => ({
       respondent_id: myRespondentId,
       trip_id: trip.id,
       date,
       status,
     }))
-
-    // Delete all existing for this respondent then re-insert
-    await supabase.from('availability').delete().eq('respondent_id', myRespondentId)
     if (upserts.length > 0) {
       await supabase.from('availability').insert(upserts)
     }
-
-    // Update local allAvail
     setAllAvail(prev => ({ ...prev, [myRespondentId]: { ...localAvail } }))
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
+  function cycleDay(iso: string) {
+    // Single tap cycles through avail -> maybe -> busy
+    setLocalAvail(prev => {
+      const next = { ...prev }
+      const cur = next[iso] || 'busy'
+      if (cur === 'busy') next[iso] = 'avail'
+      else if (cur === 'avail') next[iso] = 'maybe'
+      else delete next[iso]
+      return next
+    })
+  }
+
   function startDrag(iso: string) {
     dragging.current = true
     dragSet.current = new Set([iso])
-    applyDrag(iso)
+    applyDragToSet()
   }
 
   function continueDrag(iso: string) {
     if (!dragging.current) return
     dragSet.current.add(iso)
-    applyDrag(iso)
+    applyDragToSet()
   }
 
-  function applyDrag(iso: string) {
+  function applyDragToSet() {
     setLocalAvail(prev => {
       const next = { ...prev }
       dragSet.current.forEach(d => {
         if (dragMode === 'clear') delete next[d]
-        else next[d] = dragMode
+        else next[d] = dragMode as AvailStatus
       })
       return next
     })
@@ -193,30 +198,25 @@ export default function TripPage() {
 
   function endDrag() {
     dragging.current = false
+    dragSet.current = new Set()
   }
 
   function shiftMonth(dir: number, which: 'my' | 'ov') {
-    if (which === 'my') {
-      setMyMonth(prev => {
-        let { y, m } = prev
-        m += dir
-        if (m > 11) { m = 0; y++ }
-        if (m < 0) { m = 11; y-- }
-        return { y, m }
-      })
-    } else {
-      setOvMonth(prev => {
-        let { y, m } = prev
-        m += dir
-        if (m > 11) { m = 0; y++ }
-        if (m < 0) { m = 11; y-- }
-        return { y, m }
-      })
-    }
+    const setter = which === 'my' ? setMyMonth : setOvMonth
+    setter(prev => {
+      let { y, m } = prev
+      m += dir
+      if (m > 11) { m = 0; y++ }
+      if (m < 0) { m = 11; y-- }
+      return { y, m }
+    })
   }
 
   function copyLink() {
-    navigator.clipboard.writeText(window.location.href)
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
   if (loading) {
@@ -249,16 +249,17 @@ export default function TripPage() {
         <h1 className="text-xl font-semibold text-gray-900 flex-1 truncate">{trip.name}</h1>
         <button
           onClick={copyLink}
-          className="btn-secondary text-xs px-3 py-1.5 flex-shrink-0"
+          className="btn-secondary text-xs px-3 py-1.5 flex-shrink-0 transition-all"
+          style={copied ? { background: '#1D9E75', color: 'white' } : {}}
         >
-          Share link
+          {copied ? '✓ Copied!' : 'Share link'}
         </button>
       </div>
       <p className="text-sm text-gray-400 mb-5 ml-8">{fmtRange(trip.start_date, trip.end_date)}</p>
 
-      {/* Join prompt if not identified */}
+      {/* Join prompt */}
       {!myRespondentId && (
-        <div className="card mb-5 bg-brand-50 border-brand-200">
+        <div className="card mb-5" style={{ background: sp.bg, borderColor: sp.color + '40' }}>
           <p className="text-sm font-medium text-gray-800 mb-3">Who are you?</p>
           <div className="flex gap-2">
             <input
@@ -268,7 +269,12 @@ export default function TripPage() {
               onChange={e => setNameInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && joinAs()}
             />
-            <button onClick={joinAs} disabled={joiningAs} className="btn-primary px-4">
+            <button
+              onClick={joinAs}
+              disabled={joiningAs}
+              className="btn-primary px-4"
+              style={{ background: sp.color }}
+            >
               {joiningAs ? '...' : 'Join'}
             </button>
           </div>
@@ -286,6 +292,7 @@ export default function TripPage() {
                 ? 'border-brand-500 text-brand-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
+            style={tab === t ? { borderColor: sp.color, color: sp.color } : {}}
           >
             {t === 'my' ? 'My availability' : 'Overview'}
           </button>
@@ -294,190 +301,181 @@ export default function TripPage() {
 
       {/* MY AVAILABILITY TAB */}
       {tab === 'my' && (
-        <div className="flex gap-5">
-          {/* Calendar */}
-          <div className="flex-1 min-w-0">
-            <CalendarGrid
-              month={myMonth}
-              trip={trip}
-              avail={localAvail}
-              mode="my"
-              dragMode={dragMode}
-              sportColor={sp.color}
-              onShift={dir => shiftMonth(dir, 'my')}
-              onDragStart={startDrag}
-              onDragContinue={continueDrag}
-            />
-            {/* Legend */}
-            <div className="flex gap-4 mt-3">
-              {[
-                { color: sp.color, label: 'Free' },
-                { color: '#EF9F27', label: 'Maybe' },
-                { color: '#f3f4f6', label: 'Busy', border: true },
-              ].map(l => (
-                <div key={l.label} className="flex items-center gap-1.5">
-                  <div
-                    className="w-3 h-3 rounded"
-                    style={{ background: l.color, border: l.border ? '1px solid #e5e7eb' : undefined }}
-                  />
-                  <span className="text-xs text-gray-500">{l.label}</span>
-                </div>
-              ))}
+        <div className="flex flex-col gap-5">
+          {/* Mobile: stacked. Desktop: side by side */}
+          <div className="flex flex-col md:flex-row gap-5">
+            {/* Calendar */}
+            <div className="flex-1 min-w-0">
+              <CalendarGrid
+                month={myMonth}
+                trip={trip}
+                avail={localAvail}
+                dragMode={dragMode}
+                sportColor={sp.color}
+                onShift={dir => shiftMonth(dir, 'my')}
+                onCycleDay={cycleDay}
+                onDragStart={startDrag}
+                onDragContinue={continueDrag}
+              />
+              {/* Legend */}
+              <div className="flex gap-4 mt-3">
+                {[
+                  { color: sp.color, label: 'Free' },
+                  { color: '#EF9F27', label: 'Maybe' },
+                  { color: '#f3f4f6', label: 'Busy', border: true },
+                ].map(l => (
+                  <div key={l.label} className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded" style={{ background: l.color, border: l.border ? '1px solid #e5e7eb' : undefined }} />
+                    <span className="text-xs text-gray-500">{l.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Sidebar */}
-          <div className="w-44 flex-shrink-0 border-l border-gray-100 pl-5">
-            {myRespondentId ? (
-              <>
-                <p className="text-xs text-gray-400 mb-0.5">Responding as</p>
-                <p className="text-sm font-semibold text-gray-900 mb-4">{myName}</p>
-
-                {/* Stats */}
-                <div className="flex gap-2 mb-4">
-                  <div className="flex-1 bg-gray-50 rounded-lg p-2 text-center">
-                    <p className="text-xl font-semibold" style={{ color: sp.color }}>
-                      {countInMonth(localAvail, myMonth, trip, 'avail')}
-                    </p>
-                    <p className="text-xs text-gray-400">free</p>
+            {/* Sidebar */}
+            <div className="md:w-44 md:flex-shrink-0 md:border-l md:border-gray-100 md:pl-5 flex flex-row md:flex-col gap-4 md:gap-0">
+              {myRespondentId ? (
+                <>
+                  <div className="flex-1 md:flex-none">
+                    <p className="text-xs text-gray-400 mb-0.5">Responding as</p>
+                    <p className="text-sm font-semibold text-gray-900 md:mb-4">{myName}</p>
                   </div>
-                  <div className="flex-1 bg-gray-50 rounded-lg p-2 text-center">
-                    <p className="text-xl font-semibold text-amber-500">
-                      {countInMonth(localAvail, myMonth, trip, 'maybe')}
-                    </p>
-                    <p className="text-xs text-gray-400">maybe</p>
-                  </div>
-                </div>
 
-                {/* Drag mode */}
-                <p className="text-xs text-gray-400 mb-2">Drag mode</p>
-                <div className="flex flex-col gap-1.5 mb-4">
-                  {([
-                    { id: 'avail', label: 'Free', bg: sp.color, fg: sp.bg },
-                    { id: 'maybe', label: 'Maybe', bg: '#EF9F27', fg: '#412402' },
-                    { id: 'clear', label: 'Clear', bg: '#f3f4f6', fg: '#374151' },
-                  ] as const).map(mode => (
+                  {/* Stats - hidden on mobile to save space */}
+                  <div className="hidden md:flex gap-2 mb-4">
+                    <div className="flex-1 bg-gray-50 rounded-lg p-2 text-center">
+                      <p className="text-xl font-semibold" style={{ color: sp.color }}>
+                        {countInMonth(localAvail, myMonth, trip, 'avail')}
+                      </p>
+                      <p className="text-xs text-gray-400">free</p>
+                    </div>
+                    <div className="flex-1 bg-gray-50 rounded-lg p-2 text-center">
+                      <p className="text-xl font-semibold text-amber-500">
+                        {countInMonth(localAvail, myMonth, trip, 'maybe')}
+                      </p>
+                      <p className="text-xs text-gray-400">maybe</p>
+                    </div>
+                  </div>
+
+                  {/* Drag mode */}
+                  <div className="flex-1 md:flex-none">
+                    <p className="text-xs text-gray-400 mb-2">Tap or drag</p>
+                    <div className="flex md:flex-col gap-1.5 mb-4">
+                      {([
+                        { id: 'avail', label: 'Free', bg: sp.color, fg: sp.bg },
+                        { id: 'maybe', label: 'Maybe', bg: '#EF9F27', fg: '#412402' },
+                        { id: 'clear', label: 'Clear', bg: '#f3f4f6', fg: '#374151' },
+                      ] as const).map(mode => (
+                        <button
+                          key={mode.id}
+                          onClick={() => setDragMode(mode.id)}
+                          className="text-xs py-1.5 px-3 rounded-lg font-medium transition-all"
+                          style={dragMode === mode.id
+                            ? { background: mode.bg, color: mode.fg }
+                            : { background: '#f9fafb', color: '#6b7280' }
+                          }
+                        >
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex-shrink-0 md:w-full">
                     <button
-                      key={mode.id}
-                      onClick={() => setDragMode(mode.id as any)}
-                      className="text-xs py-1.5 px-3 rounded-lg font-medium transition-all text-left"
-                      style={dragMode === mode.id
-                        ? { background: mode.bg, color: mode.fg }
-                        : { background: '#f9fafb', color: '#6b7280' }
-                      }
+                      onClick={saveAvailability}
+                      disabled={saving}
+                      className="w-full btn-primary py-2 text-sm disabled:opacity-50"
+                      style={{ background: sp.color }}
                     >
-                      {mode.label}
+                      {saving ? 'Saving...' : 'Save'}
                     </button>
-                  ))}
-                </div>
-
-                <button
-                  onClick={saveAvailability}
-                  disabled={saving}
-                  className="w-full btn-primary py-2 text-sm disabled:opacity-50"
-                  style={{ background: sp.color }}
-                >
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
-                {saved && <p className="text-xs text-green-600 mt-1.5 text-center">✓ Saved</p>}
-              </>
-            ) : (
-              <p className="text-xs text-gray-400">Enter your name above to mark your availability</p>
-            )}
+                    {saved && <p className="text-xs text-green-600 mt-1.5 text-center">✓ Saved</p>}
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-gray-400">Enter your name above to mark your availability</p>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {/* OVERVIEW TAB */}
       {tab === 'overview' && (
-        <div className="flex gap-5">
-          {/* Heatmap calendar */}
-          <div className="flex-1 min-w-0">
-            <HeatmapGrid
-              month={ovMonth}
-              trip={trip}
-              respondents={respondents}
-              allAvail={allAvail}
-              sport={sp}
-              onShift={dir => shiftMonth(dir, 'ov')}
-            />
-            {/* Heat legend */}
-            <div className="flex items-center gap-2 mt-3">
-              <span className="text-xs text-gray-400">Fewer</span>
-              <div className="flex gap-1">
-                {['#f3f4f6', ...sp.heat].map((c, i) => (
-                  <div key={i} className="w-4 h-4 rounded" style={{ background: c, border: '0.5px solid #e5e7eb' }} />
-                ))}
-              </div>
-              <span className="text-xs text-gray-400">More</span>
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="w-44 flex-shrink-0 border-l border-gray-100 pl-5">
-            {/* Best days */}
-            <div className="mb-4">
-              <p className="text-xs text-gray-400 mb-2">Best days</p>
-              <BestDays
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col md:flex-row gap-5">
+            {/* Heatmap */}
+            <div className="flex-1 min-w-0">
+              <HeatmapGrid
                 month={ovMonth}
                 trip={trip}
                 respondents={respondents}
                 allAvail={allAvail}
                 sport={sp}
+                onShift={dir => shiftMonth(dir, 'ov')}
               />
+              <div className="flex items-center gap-2 mt-3">
+                <span className="text-xs text-gray-400">Fewer</span>
+                <div className="flex gap-1">
+                  {['#f3f4f6', ...sp.heat].map((c, i) => (
+                    <div key={i} className="w-4 h-4 rounded" style={{ background: c, border: '0.5px solid #e5e7eb' }} />
+                  ))}
+                </div>
+                <span className="text-xs text-gray-400">More</span>
+              </div>
             </div>
 
-            {/* Respondents */}
-            <p className="text-xs font-medium text-gray-700 mb-2">
-              Responses ({respondents.length})
-            </p>
-            <div className="flex flex-col gap-2 mb-4">
-              {respondents.map((r, i) => {
-                const days = getDays(trip.start_date, trip.end_date)
-                const av = allAvail[r.id] || {}
-                const freeCount = days.filter(d => av[d] === 'avail').length
-                const pct = days.length ? Math.round((freeCount / days.length) * 100) : 0
-                const initials = r.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
-                const colors = ['#E6F1FB', '#EEEDFE', '#E1F5EE', '#FAEEDA', '#FAECE7']
-                const fgColors = ['#0C447C', '#3C3489', '#085041', '#633806', '#712B13']
-                const ci = i % 5
-                return (
-                  <div key={r.id} className="flex items-center gap-2">
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-                      style={{ background: colors[ci], color: fgColors[ci] }}
-                    >
-                      {initials}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between mb-0.5">
-                        <span className="text-xs text-gray-700 truncate">{r.name}</span>
-                        <span className="text-xs text-gray-400 ml-1">{freeCount}d</span>
-                      </div>
-                      <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{ width: `${pct}%`, background: sp.color }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            {/* Sidebar */}
+            <div className="md:w-44 md:flex-shrink-0 md:border-l md:border-gray-100 md:pl-5">
+              <div className="mb-4">
+                <p className="text-xs text-gray-400 mb-2">Best days</p>
+                <BestDays month={ovMonth} trip={trip} respondents={respondents} allAvail={allAvail} sport={sp} />
+              </div>
 
-            {/* Add person */}
-            <div>
-              <p className="text-xs text-gray-400 mb-1.5">Add person</p>
-              <div className="flex gap-1">
-                <input
-                  className="input text-xs py-1 px-2 flex-1"
-                  placeholder="Name"
-                  value={newRespInput}
-                  onChange={e => setNewRespInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addRespondent()}
-                />
-                <button onClick={addRespondent} className="btn-secondary text-xs px-2 py-1">+</button>
+              <p className="text-xs font-medium text-gray-700 mb-2">Responses ({respondents.length})</p>
+              <div className="flex flex-col gap-2 mb-4">
+                {respondents.map((r, i) => {
+                  const days = getDays(trip.start_date, trip.end_date)
+                  const av = allAvail[r.id] || {}
+                  const freeCount = days.filter(d => av[d] === 'avail').length
+                  const pct = days.length ? Math.round((freeCount / days.length) * 100) : 0
+                  const initials = r.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
+                  const colors = ['#E6F1FB', '#EEEDFE', '#E1F5EE', '#FAEEDA', '#FAECE7']
+                  const fgColors = ['#0C447C', '#3C3489', '#085041', '#633806', '#712B13']
+                  const ci = i % 5
+                  return (
+                    <div key={r.id} className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                        style={{ background: colors[ci], color: fgColors[ci] }}>
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between mb-0.5">
+                          <span className="text-xs text-gray-700 truncate">{r.name}</span>
+                          <span className="text-xs text-gray-400 ml-1">{freeCount}d</span>
+                        </div>
+                        <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: sp.color }} />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-400 mb-1.5">Add person</p>
+                <div className="flex gap-1">
+                  <input
+                    className="input text-xs py-1 px-2 flex-1"
+                    placeholder="Name"
+                    value={newRespInput}
+                    onChange={e => setNewRespInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addRespondent()}
+                  />
+                  <button onClick={addRespondent} className="btn-secondary text-xs px-2 py-1">+</button>
+                </div>
               </div>
             </div>
           </div>
@@ -487,18 +485,18 @@ export default function TripPage() {
   )
 }
 
-// ── Calendar grid component ──────────────────────────────────────────────────
+// ── Calendar grid ─────────────────────────────────────────────────────────────
 
 function CalendarGrid({
-  month, trip, avail, mode, dragMode, sportColor, onShift, onDragStart, onDragContinue
+  month, trip, avail, dragMode, sportColor, onShift, onCycleDay, onDragStart, onDragContinue
 }: {
   month: { y: number; m: number }
   trip: Trip
   avail: AvailMap
-  mode: 'my'
   dragMode: AvailStatus | 'clear'
   sportColor: string
   onShift: (dir: number) => void
+  onCycleDay: (iso: string) => void
   onDragStart: (iso: string) => void
   onDragContinue: (iso: string) => void
 }) {
@@ -516,9 +514,9 @@ function CalendarGrid({
           <span className="text-sm font-medium text-gray-900 w-28 text-center">{MONTHS[m]} {y}</span>
           <button onClick={() => onShift(1)} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">›</button>
         </div>
-        <span className="text-xs text-gray-400">Drag to select</span>
+        <span className="text-xs text-gray-400">Tap or drag</span>
       </div>
-      <div className="grid grid-cols-7 gap-1" style={{ maxWidth: 280 }}>
+      <div className="grid grid-cols-7 gap-1" style={{ maxWidth: 320 }}>
         {DOWS.map(d => <div key={d} className="text-center text-xs text-gray-400 pb-1">{d}</div>)}
         {Array.from({ length: firstDow }).map((_, i) => <div key={`e${i}`} />)}
         {Array.from({ length: dim }).map((_, i) => {
@@ -545,10 +543,11 @@ function CalendarGrid({
                 color: inTrip ? color : '#d1d5db',
                 border,
                 cursor: inTrip ? 'pointer' : 'default',
-                outline: isToday ? '2px solid #374151' : undefined,
+                outline: isToday ? `2px solid ${sportColor}` : undefined,
                 outlineOffset: isToday ? '-2px' : undefined,
-                opacity: inTrip ? 1 : 0.4,
+                opacity: inTrip ? 1 : 0.3,
               }}
+              onClick={inTrip ? () => onCycleDay(iso) : undefined}
               onMouseDown={inTrip ? e => { e.preventDefault(); onDragStart(iso) } : undefined}
               onMouseOver={inTrip ? () => onDragContinue(iso) : undefined}
             >
@@ -561,7 +560,7 @@ function CalendarGrid({
   )
 }
 
-// ── Heatmap grid component ──────────────────────────────────────────────────
+// ── Heatmap grid ──────────────────────────────────────────────────────────────
 
 function HeatmapGrid({
   month, trip, respondents, allAvail, sport, onShift
@@ -588,7 +587,7 @@ function HeatmapGrid({
         <span className="text-sm font-medium text-gray-900 w-28 text-center">{MONTHS[m]} {y}</span>
         <button onClick={() => onShift(1)} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">›</button>
       </div>
-      <div className="grid grid-cols-7 gap-1" style={{ maxWidth: 280 }}>
+      <div className="grid grid-cols-7 gap-1" style={{ maxWidth: 320 }}>
         {DOWS.map(d => <div key={d} className="text-center text-xs text-gray-400 pb-1">{d}</div>)}
         {Array.from({ length: firstDow }).map((_, i) => <div key={`e${i}`} />)}
         {Array.from({ length: dim }).map((_, i) => {
@@ -612,7 +611,7 @@ function HeatmapGrid({
                 color: inTrip ? textColor : '#d1d5db',
                 border: inTrip ? '0.5px solid #e5e7eb' : 'none',
                 opacity: inTrip ? 1 : 0.3,
-                outline: isToday ? '2px solid #374151' : undefined,
+                outline: isToday ? `2px solid ${sport.color}` : undefined,
                 outlineOffset: isToday ? '-2px' : undefined,
               }}
             >
@@ -625,7 +624,7 @@ function HeatmapGrid({
   )
 }
 
-// ── Best days component ──────────────────────────────────────────────────────
+// ── Best days ─────────────────────────────────────────────────────────────────
 
 function BestDays({
   month, trip, respondents, allAvail, sport
@@ -651,15 +650,10 @@ function BestDays({
 
   if (!best.length) return <p className="text-xs text-gray-400">No days where everyone is free yet</p>
 
-  const ranges = collapseRanges(best)
   return (
     <div className="flex flex-wrap gap-1">
-      {ranges.slice(0, 4).map(r => (
-        <span
-          key={r}
-          className="text-xs px-2 py-0.5 rounded font-medium"
-          style={{ background: sport.bg, color: sport.fg }}
-        >
+      {collapseRanges(best).slice(0, 4).map(r => (
+        <span key={r} className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: sport.bg, color: sport.fg }}>
           {r}
         </span>
       ))}
@@ -667,14 +661,9 @@ function BestDays({
   )
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function countInMonth(
-  avail: AvailMap,
-  month: { y: number; m: number },
-  trip: Trip,
-  status: AvailStatus
-): number {
+function countInMonth(avail: AvailMap, month: { y: number; m: number }, trip: Trip, status: AvailStatus): number {
   const tripDays = new Set(getDays(trip.start_date, trip.end_date))
   return Object.entries(avail).filter(([iso, s]) => {
     if (s !== status) return false
