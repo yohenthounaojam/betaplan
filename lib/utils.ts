@@ -44,6 +44,15 @@ export const SPORTS = [
     fg: '#633806',
     heat: ['#FAEEDA', '#FAC775', '#EF9F27', '#854F0B'],
   },
+  {
+    id: 'general',
+    label: 'General',
+    icon: '📅',
+    color: '#4B5563',
+    bg: '#F3F4F6',
+    fg: '#1F2937',
+    heat: ['#F3F4F6', '#D1D5DB', '#9CA3AF', '#4B5563'],
+  },
 ] as const
 
 export function getSport(id: string) {

@@ -71,7 +71,7 @@ export default function CreatePage() {
       <div className="card flex flex-col gap-5">
         <div>
           <label className="text-sm text-gray-500 block mb-2">Sport</label>
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
             {SPORTS.map(sp => (
               <button
                 key={sp.id}
@@ -151,6 +151,7 @@ function getSportPlaceholder(sport: string): string {
     skiing: 'Big White ski trip',
     surfing: 'Tofino surf weekend',
     cycling: 'Whistler mountain bike trip',
+    general: 'Weekend getaway',
   }
   return map[sport] ?? 'Weekend outing'
 }

@@ -5,7 +5,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-export type Sport = 'climbing' | 'golf' | 'skiing' | 'surfing' | 'cycling'
+export type Sport = 'climbing' | 'golf' | 'skiing' | 'surfing' | 'cycling' | 'general'
 export type AvailStatus = 'avail' | 'maybe' | 'busy'
 
 export interface Trip {
