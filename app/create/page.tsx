@@ -7,55 +7,50 @@ import Link from 'next/link'
 
 export default function CreatePage() {
   const router = useRouter()
+  const today = new Date().toISOString().slice(0, 10)
+  const twoWeeks = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10)
+
   const [sport, setSport] = useState('climbing')
   const [name, setName] = useState('')
-  const [start, setStart] = useState('')
-  const [end, setEnd] = useState('')
+  const [startDate, setStartDate] = useState(today)
+  const [endDate, setEndDate] = useState(twoWeeks)
   const [creator, setCreator] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const today = new Date().toISOString().slice(0, 10)
-  const twoWeeks = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10)
-
   async function handleCreate() {
     setError('')
-    if (!name || !start || !end || !creator) {
+    if (!name.trim() || !startDate || !endDate || !creator.trim()) {
       setError('Please fill in all fields')
       return
     }
-    if (start > end) {
+    if (startDate > endDate) {
       setError('End date must be after start date')
       return
     }
     setLoading(true)
     try {
-      // Create trip
       const { data: trip, error: tripErr } = await supabase
         .from('trips')
-        .insert({ name, sport, start_date: start, end_date: end, creator_name: creator })
+        .insert({ name: name.trim(), sport, start_date: startDate, end_date: endDate, creator_name: creator.trim() })
         .select()
         .single()
 
       if (tripErr || !trip) throw tripErr
 
-      // Create creator as first respondent
       const { data: resp, error: respErr } = await supabase
         .from('respondents')
-        .insert({ trip_id: trip.id, name: creator })
+        .insert({ trip_id: trip.id, name: creator.trim() })
         .select()
         .single()
 
       if (respErr || !resp) throw respErr
 
-      // Save trip ID to localStorage so creator can see their trips
       const stored = JSON.parse(localStorage.getItem('betaplan_trips') || '[]')
       stored.unshift(trip.id)
       localStorage.setItem('betaplan_trips', JSON.stringify(stored.slice(0, 20)))
-
-      // Save respondent ID so creator is pre-selected
       localStorage.setItem(`betaplan_resp_${trip.invite_token}`, resp.id)
-      localStorage.setItem(`betaplan_resp_name_${trip.invite_token}`, creator)
+      localStorage.setItem(`betaplan_resp_name_${trip.invite_token}`, creator.trim())
 
       router.push(`/trip/${trip.invite_token}`)
     } catch (e) {
@@ -70,11 +65,10 @@ export default function CreatePage() {
     <main className="max-w-lg mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
         <Link href="/" className="btn-ghost px-2">←</Link>
-        <h1 className="text-xl font-semibold text-gray-900">New outing</h1>
+        <h1 className="text-xl font-semibold text-gray-900">New BetaPlan</h1>
       </div>
 
       <div className="card flex flex-col gap-5">
-        {/* Sport selector */}
         <div>
           <label className="text-sm text-gray-500 block mb-2">Sport</label>
           <div className="grid grid-cols-5 gap-2">
@@ -95,7 +89,6 @@ export default function CreatePage() {
           </div>
         </div>
 
-        {/* Name */}
         <div>
           <label className="text-sm text-gray-500 block mb-1.5">Outing name</label>
           <input
@@ -106,16 +99,14 @@ export default function CreatePage() {
           />
         </div>
 
-        {/* Dates */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-sm text-gray-500 block mb-1.5">Start date</label>
             <input
               className="input"
               type="date"
-              min={today}
-              defaultValue={today}
-              onChange={e => setStart(e.target.value)}
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
             />
           </div>
           <div>
@@ -123,14 +114,12 @@ export default function CreatePage() {
             <input
               className="input"
               type="date"
-              min={today}
-              defaultValue={twoWeeks}
-              onChange={e => setEnd(e.target.value)}
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
             />
           </div>
         </div>
 
-        {/* Creator name */}
         <div>
           <label className="text-sm text-gray-500 block mb-1.5">Your name</label>
           <input
@@ -148,7 +137,7 @@ export default function CreatePage() {
           disabled={loading}
           className="btn-primary w-full py-3 text-base disabled:opacity-50"
         >
-          {loading ? 'Creating...' : 'Create outing'}
+          {loading ? 'Creating...' : 'Create'}
         </button>
       </div>
     </main>

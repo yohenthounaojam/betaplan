@@ -34,7 +34,7 @@ export default function Home() {
           <p className="text-sm text-gray-500 mt-0.5">Find dates your whole crew can do</p>
         </div>
         <Link href="/create" className="btn-primary">
-          + New outing
+          + New BetaPlan
         </Link>
       </div>
 
