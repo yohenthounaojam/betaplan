@@ -24,6 +24,7 @@ export default function TripPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [nameInput, setNameInput] = useState('')
   const [joiningAs, setJoiningAs] = useState(false)
@@ -216,19 +217,33 @@ export default function TripPage() {
   return (
     <main className="max-w-2xl mx-auto px-4 py-6" onMouseUp={endDrag}>
       {/* Header */}
-      <div className="flex items-center gap-2 mb-1">
-        <a href="/" className="text-gray-400 hover:text-gray-600 text-lg">←</a>
-        <span className="text-xl">{sp.icon}</span>
-        <h1 className="text-xl font-semibold text-gray-900 flex-1 truncate">{trip.name}</h1>
-        <button
-          onClick={copyLink}
-          className="btn-secondary text-xs px-3 py-1.5 flex-shrink-0 transition-all"
-          style={copied ? { background: '#1D9E75', color: 'white' } : {}}
-        >
-          {copied ? '✓ Copied!' : 'Share link'}
-        </button>
+      <div className="mb-1">
+        <div className="flex items-center gap-2">
+          <a href="/" className="text-gray-400 hover:text-gray-600 text-lg flex-shrink-0">←</a>
+          <span className="text-xl flex-shrink-0">{sp.icon}</span>
+          <h1 className="text-xl font-semibold text-gray-900 flex-1 min-w-0 truncate">{trip.name}</h1>
+          <button
+            onClick={copyLink}
+            className="btn-secondary text-xs px-3 py-1.5 flex-shrink-0 transition-all hidden sm:block"
+            style={copied ? { background: '#1D9E75', color: 'white' } : {}}
+          >
+            {copied ? '✓ Copied!' : 'Share link'}
+          </button>
+        </div>
+        {/* Share link on its own row for mobile */}
+        <div className="flex items-center justify-between mt-1.5 ml-8">
+          <p className="text-sm text-gray-400">{fmtRange(trip.start_date, trip.end_date)}</p>
+          <button
+            onClick={copyLink}
+            className="btn-secondary text-xs px-3 py-1 sm:hidden transition-all"
+            style={copied ? { background: '#1D9E75', color: 'white' } : {}}
+          >
+            {copied ? '✓ Copied!' : 'Share link'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-300 ml-8 mt-0.5">Active for 1 year</p>
       </div>
-      <p className="text-sm text-gray-400 mb-5 ml-8">{fmtRange(trip.start_date, trip.end_date)}</p>
+      <div className="mb-5"></div>
 
       {/* Join prompt */}
       {!myRespondentId && (
@@ -363,6 +378,7 @@ export default function TripPage() {
                 allAvail={allAvail}
                 sport={sp}
                 onShift={dir => shiftMonth(dir, 'ov')}
+                onDayClick={iso => setSelectedDay(iso)}
               />
               <div className="flex items-center gap-2 mt-3">
                 <span className="text-xs text-gray-400">Fewer</span>
@@ -427,6 +443,55 @@ export default function TripPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Day detail modal */}
+      {selectedDay && trip && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0"
+          onClick={() => setSelectedDay(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-semibold text-gray-900">{fmtDay(selectedDay)}</p>
+              <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+            {(['avail', 'maybe', 'busy'] as const).map(status => {
+              const group = respondents.filter(r => {
+                const v = allAvail[r.id]?.[selectedDay] || 'busy'
+                return v === status
+              })
+              if (!group.length) return null
+              const label = status === 'avail' ? '✓ Free' : status === 'maybe' ? '~ Maybe' : '✗ Busy'
+              const color = status === 'avail' ? sp.color : status === 'maybe' ? '#EF9F27' : '#9ca3af'
+              const bg = status === 'avail' ? sp.bg : status === 'maybe' ? '#FAEEDA' : '#f3f4f6'
+              const fg = status === 'avail' ? sp.fg : status === 'maybe' ? '#633806' : '#6b7280'
+              return (
+                <div key={status} className="mb-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                    <p className="text-xs font-medium" style={{ color }}>{label}</p>
+                    <span className="text-xs text-gray-400">({group.length})</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {group.map((r) => {
+                      const initials = r.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
+                      return (
+                        <div key={r.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: bg, color: fg }}>
+                          <span>{initials}</span>
+                          <span>{r.name}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -504,7 +569,7 @@ function CalendarGrid({
 // ── Heatmap grid ──────────────────────────────────────────────────────────────
 
 function HeatmapGrid({
-  month, trip, respondents, allAvail, sport, onShift
+  month, trip, respondents, allAvail, sport, onShift, onDayClick
 }: {
   month: { y: number; m: number }
   trip: Trip
@@ -512,6 +577,7 @@ function HeatmapGrid({
   allAvail: AllAvail
   sport: ReturnType<typeof getSport>
   onShift: (dir: number) => void
+  onDayClick: (iso: string) => void
 }) {
   const { y, m } = month
   const tripDays = new Set(getDays(trip.start_date, trip.end_date))
@@ -519,6 +585,8 @@ function HeatmapGrid({
   const dim = new Date(y, m + 1, 0).getDate()
   const today = new Date().toISOString().slice(0, 10)
   const total = respondents.length || 1
+  const activeRespondents = respondents.filter(r => Object.keys(allAvail[r.id] || {}).length > 0)
+  const activeTotal = activeRespondents.length || 1
   const heat = ['#f3f4f6', ...sport.heat]
 
   return (
@@ -535,8 +603,8 @@ function HeatmapGrid({
           const d = i + 1
           const iso = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
           const inTrip = tripDays.has(iso)
-          const count = respondents.filter(r => allAvail[r.id]?.[iso] === 'avail').length
-          const bucket = inTrip ? Math.round((count / total) * 4) : 0
+          const count = activeRespondents.filter(r => allAvail[r.id]?.[iso] === 'avail').length
+          const bucket = inTrip ? Math.round((count / activeTotal) * 4) : 0
           const bg = inTrip ? heat[bucket] : 'transparent'
           const textColor = bucket >= 3 ? sport.fg : bucket >= 1 ? sport.fg : '#9ca3af'
           const isToday = iso === today
@@ -544,8 +612,8 @@ function HeatmapGrid({
           return (
             <div
               key={iso}
-              title={inTrip ? `${count}/${total} free` : undefined}
-              className="rounded-md flex items-center justify-center text-xs font-medium"
+              title={inTrip ? `${count}/${activeTotal} free` : undefined}
+              className="rounded-md flex items-center justify-center text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity"
               style={{
                 aspectRatio: '1',
                 background: bg,
@@ -555,6 +623,7 @@ function HeatmapGrid({
                 outline: isToday ? `2px solid ${sport.color}` : undefined,
                 outlineOffset: isToday ? '-2px' : undefined,
               }}
+              onClick={inTrip ? () => onDayClick(iso) : undefined}
             >
               {inTrip ? d : <span className="text-gray-200">{d}</span>}
             </div>
@@ -578,14 +647,20 @@ function BestDays({
 }) {
   const { y, m } = month
   const tripDays = getDays(trip.start_date, trip.end_date)
-  const total = respondents.length
 
+  // Only count respondents who have filled in at least one day
+  const activeRespondents = respondents.filter(r => {
+    const av = allAvail[r.id] || {}
+    return Object.keys(av).length > 0
+  })
+
+  const total = activeRespondents.length
   if (total === 0) return <p className="text-xs text-gray-400">No responses yet</p>
 
   const best = tripDays.filter(iso => {
     const iy = +iso.slice(0, 4), im = +iso.slice(5, 7) - 1
     if (iy !== y || im !== m) return false
-    const count = respondents.filter(r => allAvail[r.id]?.[iso] === 'avail').length
+    const count = activeRespondents.filter(r => allAvail[r.id]?.[iso] === 'avail').length
     return count === total
   })
 

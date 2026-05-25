@@ -6,6 +6,10 @@ export const metadata: Metadata = {
   title: 'BetaPlan — Find dates your whole crew can do',
   description: 'The easiest way to find dates that work for your entire crew. Built for outdoor sports outings.',
   metadataBase: new URL('https://betaplan.ca'),
+  icons: {
+    icon: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
   openGraph: {
     title: 'BetaPlan',
     description: 'Find dates your whole crew can do',
