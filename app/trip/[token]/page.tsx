@@ -47,9 +47,14 @@ export default function TripPage() {
     if (!tripData) { setLoading(false); return }
     setTrip(tripData as Trip)
 
-    const startM = new Date(tripData.start_date + 'T12:00:00')
-    setMyMonth({ y: startM.getFullYear(), m: startM.getMonth() })
-    setOvMonth({ y: startM.getFullYear(), m: startM.getMonth() })
+    const today = new Date()
+    const startD = new Date(tripData.start_date + 'T12:00:00')
+    const endD = new Date(tripData.end_date + 'T12:00:00')
+    const defaultM = today >= startD && today <= endD
+      ? { y: today.getFullYear(), m: today.getMonth() }
+      : { y: startD.getFullYear(), m: startD.getMonth() }
+    setMyMonth(defaultM)
+    setOvMonth(defaultM)
 
     const { data: respData } = await supabase
       .from('respondents')
